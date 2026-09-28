@@ -10,7 +10,7 @@ import android.os.Build
 import java.security.MessageDigest
 
 data class InstalledNote(val text: String, val downgrade: Boolean = false, val signatureMismatch: Boolean = false) {
-    fun blocks(allowDowngrade: Boolean) = signatureMismatch || (downgrade && !allowDowngrade)
+    fun blocks(replaceInstalled: Boolean) = signatureMismatch || (downgrade && !replaceInstalled)
 }
 
 @Suppress("DEPRECATION")
@@ -28,7 +28,7 @@ fun installedNote(installedCode: Long, installedName: String?, code: Long, sameS
     val name = installedName ?: installedCode.toString()
     return when {
         sameSigner == false -> InstalledNote("Installed version $name is signed by a different key. Uninstall it first.", signatureMismatch = true)
-        installedCode > code -> InstalledNote("Installed version $name is newer. Allow the downgrade or uninstall it first; app data may not survive a downgrade.", downgrade = true)
+        installedCode > code -> InstalledNote("Installed version $name is newer. Installing this older version uninstalls it first; its data will be lost and cannot be restored.", downgrade = true)
         installedCode == code -> InstalledNote("Version $name is already installed and will be reinstalled.")
         else -> InstalledNote("Update from version $name.")
     }

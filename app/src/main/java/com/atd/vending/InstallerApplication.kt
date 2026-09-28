@@ -33,7 +33,7 @@ data class InstallerUiState(
     val isError: Boolean = false,
     val outcome: InstallOutcome? = null,
     val log: String = "",
-    val allowDowngrade: Boolean = false,
+    val replaceInstalled: Boolean = false,
     val queue: List<QueuedFile> = emptyList(),
     val queueIndex: Int = -1
 )
@@ -80,7 +80,7 @@ class InstallerApplication : Application() {
 
     fun selectApk(uri: Uri, selectionId: String = UUID.randomUUID().toString()) {
         if (mutableUi.value.busy) return
-        mutableUi.update { it.copy(selectionId = selectionId, allowDowngrade = false, queue = if (it.batch) it.queue else emptyList(), queueIndex = if (it.batch) it.queueIndex else -1) }
+        mutableUi.update { it.copy(selectionId = selectionId, replaceInstalled = false, queue = if (it.batch) it.queue else emptyList(), queueIndex = if (it.batch) it.queueIndex else -1) }
         operation(READING) {
             mark(QueueStatus.Reading)
             val reader = ApkParser(this) { copied, total ->
@@ -135,7 +135,7 @@ class InstallerApplication : Application() {
         }
     }
 
-    fun setAllowDowngrade(allow: Boolean) = mutableUi.update { it.copy(allowDowngrade = allow) }
+    fun setReplaceInstalled(allow: Boolean) = mutableUi.update { it.copy(replaceInstalled = allow) }
 
     fun uninstallInstalled() {
         val selected = apk ?: return
@@ -179,7 +179,7 @@ class InstallerApplication : Application() {
                         else if (!log.endsWith(LOG_TRUNCATED)) log.append(LOG_TRUNCATED)
                     }, { stage ->
                         mutableUi.update { it.copy(stage = stage) }
-                    }).install(selected, PLAY_STORE_PACKAGE, mutableUi.value.allowDowngrade)
+                    }).install(selected, PLAY_STORE_PACKAGE, mutableUi.value.replaceInstalled)
                 }
                 mutableUi.update { it.copy(result = installed.summary(), outcome = installed.outcome,
                     isError = installed.outcome == InstallOutcome.Failure, log = log.toString().trimEnd()) }

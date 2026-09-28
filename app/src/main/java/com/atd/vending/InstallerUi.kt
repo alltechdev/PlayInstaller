@@ -87,12 +87,12 @@ internal fun InstalledNoteText(note: InstalledNote, colors: InstallerColors, sty
 }
 
 @Composable
-internal fun InstalledActions(note: InstalledNote, allowDowngrade: Boolean, enabled: Boolean, colors: InstallerColors,
-    onToggleDowngrade: () -> Unit, onUninstall: () -> Unit) {
+internal fun InstalledActions(note: InstalledNote, replaceInstalled: Boolean, enabled: Boolean, colors: InstallerColors,
+    onToggleReplace: () -> Unit, onUninstall: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (note.downgrade) InstallerButton(if (allowDowngrade) "Downgrade allowed" else "Allow downgrade", enabled,
-            if (allowDowngrade) colors.action else colors.background, if (allowDowngrade) colors.actionText else colors.foreground,
-            if (allowDowngrade) colors.action else colors.outline, onToggleDowngrade, compact = true)
+        if (note.downgrade) InstallerButton(if (replaceInstalled) "Will uninstall first" else "Uninstall and downgrade", enabled,
+            if (replaceInstalled) colors.action else colors.background, if (replaceInstalled) colors.actionText else colors.foreground,
+            if (replaceInstalled) colors.action else colors.outline, onToggleReplace, compact = true)
         InstallerButton("Uninstall", enabled, colors.background, colors.error, colors.outline, onUninstall, compact = true)
     }
 }

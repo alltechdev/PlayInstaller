@@ -50,9 +50,8 @@ class PackageManagerShell(private val root: CommandShell, private val log: (Stri
                 "Cannot execute as the dynamically resolved installer UID $uid. This su implementation must support su UID -c COMMAND. No root-caller fallback was attempted.\n${result.output}")
         }
     }
-    fun createInstallSession(installerPackage: String, size: Long, installerUid: Int, allowDowngrade: Boolean): Long {
-        val flags = if (allowDowngrade) arrayOf("-r", "-d") else arrayOf("-r")
-        val r = asInstaller(installerUid, "pm", "install-create", *flags, "-i", installerPackage, "--user", "0", "-S", size.toString())
+    fun createInstallSession(installerPackage: String, size: Long, installerUid: Int): Long {
+        val r = asInstaller(installerUid, "pm", "install-create", "-r", "-i", installerPackage, "--user", "0", "-S", size.toString())
         if (!PmParser.succeeded(r)) throw InstallerException(ErrorKind.SessionCreationFailed, r.output)
         return PmParser.sessionId(r.stdout) ?: throw InstallerException(ErrorKind.SessionCreationFailed,
             "Android returned no unambiguous session ID. No write/commit attempted; an unidentified session may require manual inspection.\n${r.output}")
