@@ -118,9 +118,9 @@ class ShareWorkflowTest {
             "application/x-zip-compressed", "application/octet-stream", "application/vnd.apkm",
             "application/vnd.apks", "application/vnd.xapk")
         for (type in types) {
-            for (action in listOf(Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE, Intent.ACTION_VIEW)) {
+            for (action in listOf(Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE, Intent.ACTION_VIEW, Intent.ACTION_INSTALL_PACKAGE)) {
                 val intent = Intent(action).setPackage(app.packageName).addCategory(Intent.CATEGORY_DEFAULT)
-                if (action != Intent.ACTION_VIEW) {
+                if (action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE) {
                     intent.type = type
                     intent.putExtra(Intent.EXTRA_STREAM, Uri.withAppendedPath(provider, "apk"))
                 } else intent.setDataAndType(Uri.withAppendedPath(provider, "apk"), type)

@@ -16,7 +16,7 @@ internal fun requireSharedFile(scheme: String?, authority: String?) {
 @Suppress("DEPRECATION")
 internal fun Intent.sharedFileUris(): List<Uri> {
     val uris: List<Uri?> = when (action) {
-        Intent.ACTION_VIEW -> listOf(data)
+        Intent.ACTION_VIEW, Intent.ACTION_INSTALL_PACKAGE -> listOf(data)
         Intent.ACTION_SEND -> listOf(
             (if (Build.VERSION.SDK_INT >= 33) getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
             else getParcelableExtra<android.os.Parcelable>(Intent.EXTRA_STREAM) as? Uri)
