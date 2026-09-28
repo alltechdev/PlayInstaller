@@ -72,6 +72,8 @@ class ApkParserTest {
             assertEquals(ownApk.size.toLong(), apk.size)
             assertTrue(apk.expansions.isEmpty())
             assertNotNull(apk.icon)
+            assertEquals(app.packageManager.getPackageInfo(app.packageName, SIGNING_FLAG).signers, apk.signers)
+            assertTrue(apk.signers.isNotEmpty())
             assertTrue(apk.directory.name.startsWith("selected-"))
             assertEquals(app.cacheDir, apk.directory.parentFile)
         } finally { assertTrue(apk.delete()) }

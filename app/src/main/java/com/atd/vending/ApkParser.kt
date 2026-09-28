@@ -11,7 +11,7 @@ data class Expansion(val file: File, val name: String)
 data class Apk(val directory: File, val parts: List<ApkPart>, val expansions: List<Expansion>,
     val displayName: String, val packageName: String,
     val label: String, val version: String,
-    val icon: Bitmap? = null, val versionCode: Long = 0) {
+    val icon: Bitmap? = null, val versionCode: Long = 0, val signers: Set<String> = emptySet()) {
     val size: Long get() = parts.sumOf { it.file.length() }
     fun delete(): Boolean = directory.deleteRecursively()
 }

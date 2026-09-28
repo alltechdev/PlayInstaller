@@ -70,7 +70,9 @@ class MainActivity : ComponentActivity() {
                 onOpen = { state.selected?.packageName?.let { openInstalledApp(it) } },
                 onClear = app::clearSelection,
                 onCopyResult = { copyReport(state) },
-                onCancelRead = { app.cancelRead() }
+                onCancelRead = { app.cancelRead() },
+                onToggleDowngrade = { app.setAllowDowngrade(!state.allowDowngrade) },
+                onUninstall = app::uninstallInstalled
             )
         }
     }
@@ -79,7 +81,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun InstallerScreen(state: InstallerUiState, onSelect: () -> Unit, onInstall: () -> Unit,
-    onClear: () -> Unit, onCopyResult: () -> Unit, onOpen: () -> Unit, onCancelRead: () -> Unit) {
+    onClear: () -> Unit, onCopyResult: () -> Unit, onOpen: () -> Unit, onCancelRead: () -> Unit,
+    onToggleDowngrade: () -> Unit, onUninstall: () -> Unit) {
     val colors = installerColors()
     val shape = RoundedCornerShape(14.dp)
     val body = TextStyle(color = colors.foreground, fontSize = 15.sp, lineHeight = 22.sp)
@@ -116,7 +119,9 @@ private fun InstallerScreen(state: InstallerUiState, onSelect: () -> Unit, onIns
                 AppCard(selected, colors, body, !state.busy, onClear, shape)
             }
             if (selected != null) {
-                InstallerButton("Install", state.canInstall && !state.busy, colors.action, colors.actionText, colors.action,
+                selected.installed?.let { InstalledActions(it, state.allowDowngrade, !state.busy, colors, onToggleDowngrade, onUninstall) }
+                InstallerButton("Install", state.canInstall && !state.busy && selected.installed?.blocks(state.allowDowngrade) != true,
+                    colors.action, colors.actionText, colors.action,
                     if (state.busy) ({}) else onInstall, shape = shape)
             }
             if (state.busy) {

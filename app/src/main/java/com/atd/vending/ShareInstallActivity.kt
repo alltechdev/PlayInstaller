@@ -72,7 +72,9 @@ class ShareInstallActivity : ComponentActivity() {
             val problem = issue ?: if (!active) "This file is no longer active. Open or select it again." else null
             ShareInstallDialog(if (active) state else InstallerUiState(), problem,
                 onInstall = { if (ownsSelection) app.install() },
-                onOpen = ::openInstalledApp, onCopy = { copyReport(state) }, onDismiss = ::dismiss)
+                onOpen = ::openInstalledApp, onCopy = { copyReport(state) }, onDismiss = ::dismiss,
+                onToggleDowngrade = { app.setAllowDowngrade(!state.allowDowngrade) },
+                onUninstall = { if (ownsSelection) app.uninstallInstalled() })
         }
     }
 
@@ -96,17 +98,18 @@ class ShareInstallActivity : ComponentActivity() {
 
 @Composable
 private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstall: () -> Unit,
-    onOpen: () -> Unit, onCopy: () -> Unit, onDismiss: () -> Unit) {
+    onOpen: () -> Unit, onCopy: () -> Unit, onDismiss: () -> Unit, onToggleDowngrade: () -> Unit, onUninstall: () -> Unit) {
     val colors = installerColors()
     val selected = state.selected
     val ready = issue == null && !state.busy && state.canInstall && selected != null
+    val installable = ready && selected?.installed?.blocks(state.allowDowngrade) != true
     val failed = issue != null || state.isError
     val result = state.result.isNotEmpty() && !state.busy
     val installed = result && state.outcome?.installed == true
     val copyable = result && issue == null && (state.isError || state.outcome?.warning == true)
     val title = when {
         issue != null -> "Can't open file"
-        state.busy -> if (state.reading) "Reading file" else "Installing"
+        state.busy -> when { state.reading -> "Reading file"; state.stage == "Uninstalling…" -> "Uninstalling"; else -> "Installing" }
         ready -> "Install this app?"
         failed -> if (state.selected == null) "Can't open file" else "Installation failed"
         result -> state.outcome?.title ?: "Installation result"
@@ -123,7 +126,10 @@ private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstal
         when {
             issue != null -> BasicText(issue, style = TextStyle(color = colors.error, fontSize = 14.sp, lineHeight = 20.sp))
             state.busy -> BasicText(state.stage, style = TextStyle(color = colors.muted, fontSize = 14.sp))
-            ready -> ShareAppCard(selected, colors)
+            ready -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ShareAppCard(selected, colors)
+                selected.installed?.let { InstalledActions(it, state.allowDowngrade, true, colors, onToggleDowngrade, onUninstall) }
+            }
             state.result.isNotEmpty() -> InstallResultText(state, colors,
                 TextStyle(fontSize = 14.sp, lineHeight = 20.sp))
         }
@@ -132,7 +138,7 @@ private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstal
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (ready) {
                 InstallerButton("Cancel", enabled = true, colors.background, colors.foreground, colors.outline, onDismiss, compact = true)
-                InstallerButton("Install", enabled = true, colors.action, colors.actionText, colors.action, onInstall, compact = true)
+                InstallerButton("Install", enabled = installable, colors.action, colors.actionText, colors.action, onInstall, compact = true)
             } else if (state.reading && issue == null) {
                 InstallerButton("Cancel", enabled = true, colors.background, colors.foreground, colors.outline, onDismiss, compact = true)
             } else if (!state.busy && (result || issue != null)) {

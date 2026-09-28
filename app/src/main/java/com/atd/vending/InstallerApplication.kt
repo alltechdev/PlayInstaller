@@ -32,7 +32,8 @@ data class InstallerUiState(
     val result: String = "",
     val isError: Boolean = false,
     val outcome: InstallOutcome? = null,
-    val log: String = ""
+    val log: String = "",
+    val allowDowngrade: Boolean = false
 )
 
 private const val LOG_LIMIT = 256 * 1024
@@ -63,7 +64,7 @@ class InstallerApplication : Application() {
 
     fun selectApk(uri: Uri, selectionId: String = UUID.randomUUID().toString()) {
         if (mutableUi.value.busy) return
-        mutableUi.update { it.copy(selectionId = selectionId) }
+        mutableUi.update { it.copy(selectionId = selectionId, allowDowngrade = false) }
         operation(READING) {
             val reader = ApkParser(this) { copied, total ->
                 val of = total?.let { " of ${Formatter.formatShortFileSize(this, it)}" }.orEmpty()
@@ -79,7 +80,17 @@ class InstallerApplication : Application() {
             val count = if (parsed.parts.size > 1) " · ${parsed.parts.size} APKs" else ""
             val data = if (parsed.expansions.isNotEmpty()) " · includes OBB" else ""
             mutableUi.update { it.copy(selected = SelectedApp(parsed.label, parsed.packageName, parsed.version,
-                parsed.displayName, "$size$count$data", parsed.icon, installedNote(parsed.packageName, parsed.versionCode)), canInstall = true) }
+                parsed.displayName, "$size$count$data", parsed.icon, installedNote(parsed.packageName, parsed.versionCode, parsed.signers)), canInstall = true) }
+        }
+    }
+
+    fun setAllowDowngrade(allow: Boolean) = mutableUi.update { it.copy(allowDowngrade = allow) }
+
+    fun uninstallInstalled() {
+        val selected = apk ?: return
+        operation("Uninstalling…") {
+            withContext(Dispatchers.IO) { InstallController(this@InstallerApplication, {}, {}).uninstall(selected.packageName) }
+            mutableUi.update { state -> state.copy(selected = state.selected?.copy(installed = installedNote(selected.packageName, selected.versionCode, selected.signers))) }
         }
     }
 
@@ -116,7 +127,7 @@ class InstallerApplication : Application() {
                         else if (!log.endsWith(LOG_TRUNCATED)) log.append(LOG_TRUNCATED)
                     }, { stage ->
                         mutableUi.update { it.copy(stage = stage) }
-                    }).install(selected, PLAY_STORE_PACKAGE)
+                    }).install(selected, PLAY_STORE_PACKAGE, mutableUi.value.allowDowngrade)
                 }
                 mutableUi.update { it.copy(result = installed.summary(), outcome = installed.outcome,
                     isError = installed.outcome == InstallOutcome.Failure, log = log.toString().trimEnd()) }

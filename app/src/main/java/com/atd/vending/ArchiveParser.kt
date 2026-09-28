@@ -126,7 +126,8 @@ class ApkParser(private val context: Context, private val progress: (copied: Lon
                 drawable.draw(Canvas(it))
             }
         }.getOrNull()
-        return Apk(directory, parts, expansions, name ?: "Selected file", info.packageName, label, info.versionName ?: "Unknown", icon, info.code)
+        val signers = runCatching { context.packageManager.getPackageArchiveInfo(base.path, SIGNING_FLAG)?.signers }.getOrNull().orEmpty()
+        return Apk(directory, parts, expansions, name ?: "Selected file", info.packageName, label, info.versionName ?: "Unknown", icon, info.code, signers)
     }
 
     companion object {

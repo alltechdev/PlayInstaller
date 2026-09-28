@@ -19,7 +19,7 @@ class InstallController internal constructor(private val openRoot: () -> Command
     constructor(context: Context, log: (String) -> Unit, progress: (String) -> Unit) :
         this({ RootShell().open() }, { InstallerResolver(context, it) }, log, progress)
 
-    fun install(apk: Apk, installer: String): InstallResult {
+    fun install(apk: Apk, installer: String, allowDowngrade: Boolean = false): InstallResult {
         var session: Long? = null
         var sessionOwnerUid: Int? = null
         var committed = false
@@ -58,7 +58,7 @@ class InstallController internal constructor(private val openRoot: () -> Command
                 path
             }
             progress("Creating session…")
-            session = pm.createInstallSession(installer, apk.size, uid)
+            session = pm.createInstallSession(installer, apk.size, uid, allowDowngrade)
             apk.parts.forEachIndexed { index, part ->
                 progress("Writing APK ${index + 1}/${apk.parts.size}…")
                 checked(pm.writeInstallSession(session, part.sessionName, paths[index], part.file.length()), ErrorKind.SessionWriteFailed)
@@ -130,6 +130,11 @@ class InstallController internal constructor(private val openRoot: () -> Command
         }
         warnings.forEach(log)
         return InstallResult(completed, apk.packageName, session, metadata, error, warnings)
+    }
+
+    fun uninstall(packageName: String) {
+        require(PmParser.validPackage(packageName))
+        openRoot().use { checked(PackageManagerShell(it, log).uninstall(packageName), ErrorKind.CommandFailed) }
     }
 
     /** Leftovers of a process killed mid-install. Never a glob as root: only exact, validated paths are removed. */

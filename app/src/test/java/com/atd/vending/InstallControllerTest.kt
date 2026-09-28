@@ -46,10 +46,11 @@ class InstallControllerTest {
             override fun close() { closed = true }
         }
 
-        fun run(): InstallResult = InstallController({
+        fun controller() = InstallController({
             if (rootDenied) throw InstallerException(ErrorKind.RootUnavailable, "denied")
             FakeShell().also { shells.add(it) }
-        }, { this }, {}, {}).install(apk, identity.name)
+        }, { this }, {}, {})
+        fun run(allowDowngrade: Boolean = false): InstallResult = controller().install(apk, identity.name, allowDowngrade)
 
         fun commands(op: String) = calls.filter { operation(it) == op }
         fun assertClean() {
@@ -90,6 +91,25 @@ class InstallControllerTest {
             assertTrue(f.commands("install-abandon").isEmpty())
             f.assertClean()
         }
+    }
+
+    @Test fun downgradeFlagIsPassedOnlyWhenAllowed() {
+        for (allow in listOf(false, true)) {
+            val f = Fixture()
+            assertTrue(f.run(allow).success)
+            assertEquals(allow, "'-d'" in f.commands("install-create").single().last())
+            f.assertClean()
+        }
+    }
+
+    @Test fun uninstallRunsExactlyOneRootCommandAndClosesTheShell() {
+        val f = Fixture()
+        f.controller().uninstall("app.test")
+        assertEquals(listOf(listOf("pm", "uninstall", "--user", "0", "app.test")), f.calls.filter { it.first() == "pm" })
+        assertTrue(f.shells.single().closed)
+        f.reply = { op, _ -> if (op == "uninstall") failure() else null }
+        try { f.controller().uninstall("app.test"); fail("Failure was ignored") } catch (e: InstallerException) { assertEquals(ErrorKind.CommandFailed, e.kind) }
+        try { f.controller().uninstall("bad name"); fail("Invalid name accepted") } catch (_: IllegalArgumentException) {}
     }
 
     @Test fun everyFailedStageStopsAndCleansUp() {

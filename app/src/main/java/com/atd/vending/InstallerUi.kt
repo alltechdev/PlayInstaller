@@ -7,7 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -81,7 +83,18 @@ internal fun InstallerButton(
 
 @Composable
 internal fun InstalledNoteText(note: InstalledNote, colors: InstallerColors, style: TextStyle) {
-    BasicText(note.text, style = if (note.downgrade) style.copy(color = colors.warning) else style)
+    BasicText(note.text, style = if (note.downgrade || note.signatureMismatch) style.copy(color = colors.warning) else style)
+}
+
+@Composable
+internal fun InstalledActions(note: InstalledNote, allowDowngrade: Boolean, enabled: Boolean, colors: InstallerColors,
+    onToggleDowngrade: () -> Unit, onUninstall: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (note.downgrade) InstallerButton(if (allowDowngrade) "Downgrade allowed" else "Allow downgrade", enabled,
+            if (allowDowngrade) colors.action else colors.background, if (allowDowngrade) colors.actionText else colors.foreground,
+            if (allowDowngrade) colors.action else colors.outline, onToggleDowngrade, compact = true)
+        InstallerButton("Uninstall", enabled, colors.background, colors.error, colors.outline, onUninstall, compact = true)
+    }
 }
 
 @Composable

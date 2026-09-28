@@ -182,9 +182,11 @@ class ShareWorkflowTest {
     @Test fun cancelButtonClearsTheSharedSelection() {
         ActivityScenario.launch<ShareInstallActivity>(share("apk")).use {
             await("Confirmation missing") { !app.ui.value.busy && button("Cancel")?.isEnabled == true }
-            val installed = app.packageManager.getPackageInfo(app.packageName, 0)
-            assertEquals(installedNote(installed.code, installed.versionName, installed.code), app.ui.value.selected!!.installed)
+            val installed = app.packageManager.getPackageInfo(app.packageName, SIGNING_FLAG)
+            assertEquals(installedNote(installed.code, installed.versionName, installed.code, true), app.ui.value.selected!!.installed)
             assertTrue(hasText("already installed"))
+            assertNotNull(button("Uninstall"))
+            assertNull(button("Allow downgrade"))
             assertTrue(button("Cancel")!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
             await("Cancel did not clear the selection") { !app.ui.value.busy && app.ui.value.selected == null }
             assertNull(app.ui.value.selectionId)
