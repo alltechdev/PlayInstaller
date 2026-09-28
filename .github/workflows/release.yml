@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Check the tag matches versionName
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -50,7 +51,16 @@ jobs:
         run: |
           "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs "PlayInstaller-$GITHUB_REF_NAME.apk" \
             | grep -q 'certificate DN: CN=alltechdev' || { echo "APK is not signed with the release key"; exit 1; }
+      - name: Write release notes from commits
+        run: |
+          previous=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          range=${previous:+$previous..}$GITHUB_REF_NAME
+          { echo "## Changes"; echo
+            git log --format='- %s (%an)' "$range" | grep -v '^- Bump version'
+            echo; echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/${previous:-$(git rev-list --max-parents=0 HEAD)}...$GITHUB_REF_NAME"
+          } > notes.md
+          cat notes.md
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "PlayInstaller-$GITHUB_REF_NAME.apk" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: gh release create "$GITHUB_REF_NAME" "PlayInstaller-$GITHUB_REF_NAME.apk" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
