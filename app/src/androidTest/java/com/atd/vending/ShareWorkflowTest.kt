@@ -206,6 +206,20 @@ class ShareWorkflowTest {
         }
     }
 
+    private fun serviceRunning(): Boolean {
+        val manager = app.getSystemService(android.app.ActivityManager::class.java)
+        @Suppress("DEPRECATION")
+        return manager.getRunningServices(Int.MAX_VALUE).any { it.service.className == InstallService::class.java.name && it.foreground }
+    }
+
+    @Test fun installsRunInsideAForegroundService() {
+        assertFalse(serviceRunning())
+        InstallService.start(app, "Test")
+        await("Foreground service did not start") { serviceRunning() }
+        InstallService.stop(app)
+        await("Foreground service did not stop") { !serviceRunning() }
+    }
+
     @Suppress("UNCHECKED_CAST")
     private fun showState(state: InstallerUiState) {
         val field = InstallerApplication::class.java.getDeclaredField("mutableUi").apply { isAccessible = true }

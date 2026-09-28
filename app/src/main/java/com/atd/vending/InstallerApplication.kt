@@ -107,6 +107,7 @@ class InstallerApplication : Application() {
     fun install() {
         val selected = apk ?: return
         operation("Installing…") {
+            InstallService.start(this, selected.label)
             try {
                 val log = StringBuilder()
                 val installed = withContext(Dispatchers.IO) {
@@ -120,6 +121,7 @@ class InstallerApplication : Application() {
                 mutableUi.update { it.copy(result = installed.summary(), outcome = installed.outcome,
                     isError = installed.outcome == InstallOutcome.Failure, log = log.toString().trimEnd()) }
             } finally {
+                InstallService.stop(this)
                 apk = null
                 mutableUi.update { it.copy(canInstall = false) }
             }
