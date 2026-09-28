@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Private fixture for device tests; absent from every release build. -->
+        <provider android:name=".SharedApkProvider"
+            android:authorities="${applicationId}.test.files"
+            android:process=":shareTestFixture" android:exported="false" />
+    </application>
+</manifest>

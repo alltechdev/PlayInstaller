@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Real transparent cutouts preserve the mark under launcher tinting. -->
+    <group>
+        <clip-path
+            android:fillType="evenOdd"
+            android:pathData="M0,0 H108 V108 H0 Z M82,68 A14,14 0,1 1,54 68 A14,14 0,1 1,82 68 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M34,31.5 L54.5,52 L34,72.5 Z M35.2,29.4 Q36,28.8 37.2,29.5 L63.2,43.8 L55.8,50.8 Z M35.2,74.6 Q36,75.2 37.2,74.5 L63.2,60.2 L55.8,53.2 Z M57.1,52 L64.8,44.7 L76.1,50.9 Q78,52 76.1,53.1 L64.8,59.3 Z" />
+    </group>
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M79,68 A11,11 0,1 1,57 68 A11,11 0,1 1,79 68 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M68,61 L68,69 M64.5,65.5 L68,69 L71.5,65.5 M62.5,72 L62.5,74 L73.5,74 L73.5,72" />
+</vector>

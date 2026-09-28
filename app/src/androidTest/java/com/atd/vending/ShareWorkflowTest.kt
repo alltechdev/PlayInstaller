@@ -1,0 +1,247 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 alltechdev
+
+package com.atd.vending
+
+import android.app.Instrumentation.ActivityMonitor
+import kotlinx.coroutines.flow.MutableStateFlow
+import android.content.ClipData
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
+import androidx.lifecycle.Lifecycle
+import androidx.test.core.app.ActivityScenario
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class ShareWorkflowTest {
+    private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val app get() = instrumentation.targetContext.applicationContext as InstallerApplication
+    private val provider = Uri.parse("content://com.atd.vending.test.files")
+    private fun control(method: String) = app.contentResolver.call(provider, method, null, null)!!
+    private fun reads() = control("count").getInt("reads")
+    private fun onMain(block: () -> Unit) = instrumentation.runOnMainSync(block)
+    private fun await(message: String, condition: () -> Boolean) {
+        val deadline = SystemClock.uptimeMillis() + 10_000
+        while (!condition()) {
+            if (SystemClock.uptimeMillis() > deadline) fail(message)
+            SystemClock.sleep(25)
+        }
+    }
+    private fun hasText(text: String): Boolean {
+        fun contains(node: AccessibilityNodeInfo?): Boolean {
+            if (node == null) return false
+            if (node.text?.toString()?.contains(text) == true) return true
+            return (0 until node.childCount).any { contains(node.getChild(it)) }
+        }
+        return contains(instrumentation.uiAutomation.rootInActiveWindow)
+    }
+    private fun button(text: String): AccessibilityNodeInfo? {
+        fun find(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+            if (node == null) return null
+            if (node.text?.toString() == text) {
+                var target: AccessibilityNodeInfo = node
+                while (!target.isClickable) target = target.parent ?: return null
+                return target
+            }
+            for (index in 0 until node.childCount) find(node.getChild(index))?.let { return it }
+            return null
+        }
+        return find(instrumentation.uiAutomation.rootInActiveWindow)
+    }
+
+    private fun share(path: String) = Intent(app, ShareInstallActivity::class.java).apply {
+        action = Intent.ACTION_SEND
+        type = "application/vnd.android.package-archive"
+        val uri = Uri.withAppendedPath(provider, path)
+        putExtra(Intent.EXTRA_STREAM, uri)
+        clipData = ClipData.newRawUri("APK", uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    @Before fun reset() {
+        control("release")
+        await("Previous operation did not finish") { !app.ui.value.busy }
+        onMain { app.clearSelection() }
+        await("Selection did not clear") { !app.ui.value.busy }
+        control("reset")
+    }
+
+    @After fun cleanup() {
+        control("release")
+        await("File read did not finish") { !app.ui.value.busy }
+        onMain { app.clearSelection() }
+        await("Selection did not clear") { !app.ui.value.busy }
+    }
+
+    @Suppress("DEPRECATION")
+    @Test fun manifestAcceptsStreamOnlySharesAndContentViews() {
+        val types = listOf("application/vnd.android.package-archive", "application/zip",
+            "application/x-zip-compressed", "application/octet-stream", "application/vnd.apkm",
+            "application/vnd.apks", "application/vnd.xapk")
+        for (type in types) {
+            for (action in listOf(Intent.ACTION_SEND, Intent.ACTION_VIEW)) {
+                val intent = Intent(action).setPackage(app.packageName).addCategory(Intent.CATEGORY_DEFAULT)
+                if (action == Intent.ACTION_SEND) {
+                    intent.type = type
+                    intent.putExtra(Intent.EXTRA_STREAM, Uri.withAppendedPath(provider, "apk"))
+                } else intent.setDataAndType(Uri.withAppendedPath(provider, "apk"), type)
+                val matches = app.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+                assertTrue("No handler for $action / $type", matches.any {
+                    it.activityInfo.name == ShareInstallActivity::class.java.name
+                })
+            }
+        }
+    }
+
+    @Test fun recreationWhileReadingReattachesWithoutReopening() {
+        ActivityScenario.launch<ShareInstallActivity>(share("slow")).use { scenario ->
+            await("Read did not start") { reads() == 1 && app.ui.value.busy }
+            val selection = app.ui.value.selectionId
+            scenario.recreate()
+            await("Recreated dialog did not show progress") { hasText("Reading file") }
+            assertFalse(hasText("Another operation"))
+            assertEquals(selection, app.ui.value.selectionId)
+            assertEquals(1, reads())
+            control("release")
+            await("APK did not load") { !app.ui.value.busy && app.ui.value.canInstall }
+            await("Confirmation missing") { hasText("Install this app?") }
+        }
+    }
+
+    @Test fun recreationAtConfirmationKeepsTheSamePrivateCopy() {
+        ActivityScenario.launch<ShareInstallActivity>(share("apk")).use { scenario ->
+            await("APK did not load") { !app.ui.value.busy && app.ui.value.canInstall }
+            val selected = app.ui.value
+            val cached = app.cacheDir.list()?.toSet()
+            scenario.recreate()
+            await("Confirmation missing after recreation") { hasText("Install this app?") }
+            assertEquals(selected, app.ui.value)
+            assertEquals(cached, app.cacheDir.list()?.toSet())
+            assertEquals(1, reads())
+        }
+    }
+
+    @Test fun recreationKeepsTheResultInsteadOfRetryingTheUri() {
+        ActivityScenario.launch<ShareInstallActivity>(share("missing")).use { scenario ->
+            await("Expected a read error") { reads() == 1 && !app.ui.value.busy && app.ui.value.isError }
+            val result = app.ui.value.result
+            scenario.recreate()
+            await("Error result missing after recreation") { hasText("Fixture unavailable") }
+            assertEquals(result, app.ui.value.result)
+            assertEquals(1, reads())
+        }
+    }
+
+    @Test fun recreationWithLostSelectionDoesNotRestartTheRequest() {
+        ActivityScenario.launch<ShareInstallActivity>(share("apk")).use { scenario ->
+            await("APK did not load") { !app.ui.value.busy && app.ui.value.canInstall }
+            onMain { app.clearSelection() }
+            await("Selection did not clear") { !app.ui.value.busy }
+            scenario.recreate()
+            await("Lost selection message missing") { hasText("no longer active") }
+            assertEquals(1, reads())
+            assertFalse(app.ui.value.canInstall)
+        }
+    }
+
+    @Test fun rejectedShareCanCloseWithoutDisturbingAnActiveRead() {
+        onMain { app.selectApk(Uri.withAppendedPath(provider, "slow")) }
+        await("Read did not start") { reads() == 1 && app.ui.value.busy }
+        val selection = app.ui.value.selectionId
+        ActivityScenario.launch<ShareInstallActivity>(share("apk")).use { scenario ->
+            await("Busy message missing") { hasText("Another operation") && hasText("Close") }
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            assertEquals(selection, app.ui.value.selectionId)
+            assertTrue(app.ui.value.busy)
+            assertEquals(1, reads())
+        }
+    }
+
+    @Test fun cancelDuringReadingClosesTheDialogWithoutAnError() {
+        ActivityScenario.launch<ShareInstallActivity>(share("slow")).use { scenario ->
+            await("Read did not start") { reads() == 1 && app.ui.value.reading && button("Cancel") != null }
+            assertTrue(button("Cancel")!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            await("Read did not cancel") { !app.ui.value.busy }
+            assertNull(app.ui.value.selected)
+            assertEquals("", app.ui.value.result)
+            assertFalse(app.ui.value.isError)
+            await("Dialog did not close") { scenario.state == Lifecycle.State.DESTROYED }
+            assertEquals(1, reads())
+        }
+    }
+
+    @Test fun cancelButtonClearsTheSharedSelection() {
+        ActivityScenario.launch<ShareInstallActivity>(share("apk")).use {
+            await("Confirmation missing") { !app.ui.value.busy && button("Cancel")?.isEnabled == true }
+            val installed = app.packageManager.getPackageInfo(app.packageName, 0)
+            assertEquals(installedNote(installed.code, installed.versionName, installed.code), app.ui.value.selected!!.installed)
+            assertTrue(hasText("already installed"))
+            assertTrue(button("Cancel")!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            await("Cancel did not clear the selection") { !app.ui.value.busy && app.ui.value.selected == null }
+            assertNull(app.ui.value.selectionId)
+            assertEquals(1, reads())
+        }
+    }
+
+    @Test fun mainButtonsRemainDisabledDuringReadingAndEnableAfterward() {
+        onMain { app.selectApk(Uri.withAppendedPath(provider, "slow")) }
+        await("Read did not start") { reads() == 1 && app.ui.value.busy }
+        ActivityScenario.launch(MainActivity::class.java).use {
+            await("Disabled select button missing") { button("Select file")?.isEnabled == false }
+            assertTrue(app.ui.value.busy)
+            assertTrue(button("Cancel")!!.isEnabled)
+            control("release")
+            await("Install button did not enable") { !app.ui.value.busy && button("Install")?.isEnabled == true }
+            assertTrue(app.ui.value.canInstall)
+            assertEquals(1, reads())
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun showState(state: InstallerUiState) {
+        val field = InstallerApplication::class.java.getDeclaredField("mutableUi").apply { isAccessible = true }
+        onMain { (field.get(app) as MutableStateFlow<InstallerUiState>).value = state }
+        instrumentation.waitForIdleSync()
+    }
+
+    @Test fun mainOpenAppIsAvailableOnlyForCompletedInstalls() {
+        val selected = SelectedApp("Test", app.packageName, "1", "test.apk", "1 MB", null)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            assertNull(button("Open app"))
+            for (outcome in InstallOutcome.entries) {
+                showState(InstallerUiState(selected = selected, result = outcome.title, outcome = outcome,
+                    isError = outcome == InstallOutcome.Failure))
+                await("Result missing") { hasText(outcome.title) }
+                assertEquals(outcome.installed, button("Open app")?.isEnabled == true)
+            }
+            showState(InstallerUiState(selected = selected, result = "Installed", outcome = InstallOutcome.Success))
+            scenario.recreate()
+            await("Open app missing after recreation") { button("Open app")?.isEnabled == true }
+            val monitor = ActivityMonitor(MainActivity::class.java.name, null, true)
+            instrumentation.addMonitor(monitor)
+            try {
+                assertTrue(button("Open app")!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+                await("Installed app was not launched") { monitor.hits == 1 }
+            } finally {
+                instrumentation.removeMonitor(monitor)
+            }
+            try {
+                showState(app.ui.value.copy(busy = true, stage = "Installing…"))
+                await("Open app remained visible while busy") { button("Open app") == null }
+            } finally {
+                showState(InstallerUiState())
+            }
+            await("Open app remained visible after clearing") { button("Open app") == null }
+        }
+    }
+
+}

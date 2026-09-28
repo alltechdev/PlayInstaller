@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Four separated Play facets, with an inset install badge. -->
+    <path
+        android:fillColor="#8FA4E8"
+        android:pathData="M34,31.5 L54.5,52 L34,72.5 Z" />
+    <path
+        android:fillColor="#F09A84"
+        android:pathData="M35.2,29.4 Q36,28.8 37.2,29.5 L63.2,43.8 L55.8,50.8 Z" />
+    <path
+        android:fillColor="#A9B5DF"
+        android:pathData="M35.2,74.6 Q36,75.2 37.2,74.5 L63.2,60.2 L55.8,53.2 Z" />
+    <path
+        android:fillColor="#F1C36F"
+        android:pathData="M57.1,52 L64.8,44.7 L76.1,50.9 Q78,52 76.1,53.1 L64.8,59.3 Z" />
+    <path
+        android:fillColor="#F3F2F8"
+        android:strokeColor="#242638"
+        android:strokeWidth="3"
+        android:pathData="M80,68 A12,12 0,1 1,56 68 A12,12 0,1 1,80 68 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#303650"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M68,61 L68,69 M64.5,65.5 L68,69 L71.5,65.5 M62.5,72 L62.5,74 L73.5,74 L73.5,72" />
+</vector>
