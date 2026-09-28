@@ -43,6 +43,7 @@ android {
         resources.excludes += "DebugProbesKt.bin"
     }
     lint { abortOnError = true; checkReleaseBuilds = false }
+    sourceSets.getByName("test").resources.srcDir("src/androidTest/assets")
 }
 
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }

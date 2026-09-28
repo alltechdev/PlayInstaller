@@ -8,3 +8,4 @@ local.properties
 *.apk
 *.aab
 *.idsig
+!app/src/androidTest/assets/splits/*.apk

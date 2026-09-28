@@ -125,16 +125,36 @@ class ApkParserTest {
         assertEquals(ErrorKind.ApkParseFailed, garbage.kind)
         assertTrue(garbage.message!!.startsWith("Cannot read this APK/archive"))
         assertTrue(failure(zip("none.zip", "readme.txt" to "hi".toByteArray())).message!!.startsWith("No APKs found"))
-        assertTrue(failure(zip("fake.zip", "base.apk" to "not an apk".toByteArray())).message!!.contains("could not parse this APK set"))
+        assertTrue(failure(zip("fake.zip", "base.apk" to "not an apk".toByteArray())).message!!.startsWith("Cannot read the manifest of base.apk"))
         assertTrue(failure(file("fake.apk", zipBytes("AndroidManifest.xml" to "x".toByteArray()))).message!!.startsWith("Invalid APK"))
         assertTrue(failure(zip("empty-toc.apks", "base.apk" to ownApk, "toc.pb" to ByteArray(0))).message!!.startsWith("No compatible APK variant"))
         val missing = failure(File("/nonexistent/missing.apk"))
         assertEquals(ErrorKind.ApkParseFailed, missing.kind)
     }
 
-    @Test fun flatArchivesForOtherAbisAreRejectedBeforeExtraction() {
-        val error = failure(zip("riscv.apks", "base.apk" to ownApk, "split_config.riscv64.apk" to ownApk))
-        assertTrue(error.message, error.message!!.contains("targets riscv64"))
+    private fun fixture(name: String) = InstrumentationRegistry.getInstrumentation().context.assets.open("splits/$name.apk").use { it.readBytes() }
+
+    @Test fun splitsAreSelectedByManifestNotFilename() {
+        val archive = zip("renamed.apkm", "split_config.x86.apk" to fixture("base"), "b.apk" to fixture("arm64"),
+            "split_config.arm64_v8a.apk" to fixture("x86"), "config.hdpi.apk" to fixture("xxhdpi"), "config.xxhdpi.apk" to fixture("hdpi"),
+            "fr.apk" to fixture("fr"), "feature.apk" to fixture("assets"), "z.apk" to fixture("assetsxxhdpi"), "y.apk" to fixture("assetshdpi"))
+        val apk = read(archive)
+        try {
+            assertEquals("com.atd.fixture", apk.packageName)
+            assertEquals(7L, apk.versionCode)
+            val splits = apk.parts.map { SplitManifest.read(it.file).split }
+            assertEquals(null, splits.first())
+            val density = if (BundleApks.bestDensity(listOf(240, 480), app.resources.displayMetrics.densityDpi) == 480) "xxhdpi" else "hdpi"
+            assertEquals(setOf("config.arm64_v8a", "config.$density", "config.fr", "assets", "assets.config.$density"), splits.drop(1).toSet())
+            assertEquals(apk.parts.map { it.file.name }.toSet(), apk.parts.first().file.parentFile!!.list()!!.toSet())
+            assertEquals(1, apk.signers.size)
+        } finally { assertTrue(apk.delete()) }
+    }
+
+    @Test fun archivesForOtherAbisOrWithoutABaseAreRejected() {
+        assertTrue(failure(zip("x86.apkm", "base.apk" to fixture("base"), "config.x86.apk" to fixture("x86"))).message!!.contains("targets x86"))
+        assertTrue(failure(zip("nobase.apkm", "a.apk" to fixture("arm64"), "b.apk" to fixture("fr"))).message!!.contains("missing a base APK"))
+        assertTrue(failure(zip("twobase.apkm", "a.apk" to fixture("base"), "b.apk" to ownApk)).message!!.contains("2 base APKs"))
     }
 
     @Test fun corruptEntriesAreDetectedByChecksum() {

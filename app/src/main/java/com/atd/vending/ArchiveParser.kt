@@ -14,7 +14,6 @@ import android.provider.OpenableColumns
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
-import java.util.Locale
 import java.util.concurrent.CancellationException
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
@@ -81,18 +80,26 @@ class ApkParser(private val context: Context, private val stallTimeoutMs: Long =
                 if (apks.isEmpty()) fail("No APKs found. Select an APK or an unencrypted APKS, APKM, or XAPK archive.")
                 if (apks.size > 512) fail("Archive contains too many APKs.")
                 val toc = zip.getEntry("toc.pb")
-                apks = if (toc != null) {
+                if (toc != null) {
                     val bytes = zip.getInputStream(toc).use { readSmall(it, 4 * 1024 * 1024) }
                     val selected = BundleApks(Build.VERSION.SDK_INT, Build.SUPPORTED_ABIS.toList(),
                         context.resources.displayMetrics.densityDpi, context.packageManager::hasSystemFeature).select(bytes)
                     if (!apks.map { it.name }.containsAll(selected)) fail("APKS index references missing APKs.")
-                    apks.filter { it.name in selected }
-                } else selectFlat(apks, Build.SUPPORTED_ABIS.toList(), context.resources.displayMetrics.densityDpi)
+                    apks = apks.filter { it.name in selected }
+                }
                 if (apks.isEmpty()) fail("This archive has no compatible APKs for this device.")
                 val payload = File(directory, "apks").apply { check(mkdir()) }
-                val files = apks.mapIndexed { index, entry ->
+                var files = apks.mapIndexed { index, entry ->
                     // Never use archive paths as extraction destinations.
                     File(payload, "part-$index.apk").also { extract(zip, entry, it) }
+                }
+                if (toc == null) {
+                    val infos = files.map { file ->
+                        file to (runCatching { SplitManifest.read(file) }.getOrElse { fail("Cannot read the manifest of ${apks[files.indexOf(file)].name}: ${it.message}") })
+                    }
+                    val selected = SplitManifest.select(infos, Build.SUPPORTED_ABIS.toList(), context.resources.displayMetrics.densityDpi)
+                    files.filter { it !in selected }.forEach { if (!it.delete()) fail("Cannot remove an unused split from private cache.") }
+                    files = selected
                 }
                 val parsed = info(if (files.size == 1) files.single() else payload)
                     ?: fail("Android could not parse this APK set. It must contain one base APK and matching splits for the same package/version. The archive may be incomplete or incompatible with this device.")
@@ -148,37 +155,6 @@ class ApkParser(private val context: Context, private val stallTimeoutMs: Long =
         }.getOrNull()
         val signers = runCatching { context.packageManager.getPackageArchiveInfo(base.path, SIGNING_FLAG)?.signers }.getOrNull().orEmpty()
         return Apk(directory, parts, expansions, name ?: "Selected file", info.packageName, label, info.versionName ?: "Unknown", icon, info.code, signers)
-    }
-
-    companion object {
-        internal fun selectFlat(entries: List<ZipEntry>, supportedAbis: List<String>, density: Int): List<ZipEntry> {
-            val universal = entries.filter { it.name.substringAfterLast('/').equals("universal.apk", true) }
-            if (universal.size == 1) return universal
-            val abiAliases = mapOf("arm64_v8a" to "arm64-v8a", "armeabi_v7a" to "armeabi-v7a",
-                "armeabi" to "armeabi", "x86_64" to "x86_64", "x86" to "x86", "riscv64" to "riscv64")
-            fun configuration(entry: ZipEntry): String {
-                val name = entry.name.substringAfterLast('/').lowercase(Locale.ROOT).removeSuffix(".apk")
-                return name.substringAfterLast("config.", "").ifEmpty { name.substringAfterLast('-', "") }.replace('-', '_')
-            }
-            val available = entries.mapNotNull { abiAliases[configuration(it)] }.toSet()
-            val chosenAbi = supportedAbis.firstOrNull { it in available }
-            if (available.isNotEmpty() && chosenAbi == null) throw InstallerException(ErrorKind.ApkParseFailed,
-                "This archive targets ${available.joinToString()}, but this device supports ${supportedAbis.joinToString()}.")
-            val densities = mapOf("ldpi" to 120, "mdpi" to 160, "tvdpi" to 213, "hdpi" to 240,
-                "xhdpi" to 320, "xxhdpi" to 480, "xxxhdpi" to 640)
-            val densityGroups = entries.filter { configuration(it) in densities }.groupBy {
-                it.name.lowercase(Locale.ROOT).removeSuffix(".apk").removeSuffix(configuration(it))
-            }
-            val selectedDensity = densityGroups.values.flatMap { group ->
-                val best = BundleApks.bestDensity(group.mapNotNull { densities[configuration(it)] }, density)
-                group.filter { densities[configuration(it)] == best }
-            }.toSet()
-            return entries.filter {
-                val config = configuration(it)
-                (abiAliases[config] == null || abiAliases[config] == chosenAbi) &&
-                    (config !in densities || it in selectedDensity)
-            }
-        }
     }
 
     private fun extract(zip: ZipFile, entry: ZipEntry, file: File) {

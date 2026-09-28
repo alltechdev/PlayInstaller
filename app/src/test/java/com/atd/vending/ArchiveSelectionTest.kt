@@ -6,25 +6,38 @@ package com.atd.vending
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayOutputStream
-import java.util.zip.ZipEntry
+import java.io.File
 
 class ArchiveSelectionTest {
-    private fun flat(vararg names: String, density: Int = 420) =
-        ApkParser.selectFlat(names.map(::ZipEntry), listOf("arm64-v8a", "armeabi-v7a"), density).map { it.name }
+    private fun info(name: String) = SplitManifest.read(File(javaClass.getResource("/splits/$name.apk")!!.toURI()))
+    private fun select(vararg names: String, abis: List<String> = listOf("arm64-v8a", "armeabi-v7a"), density: Int = 420) =
+        SplitManifest.select(names.map { it to info(it) }, abis, density)
 
-    @Test fun flatArchivesKeepBaseFeaturesLanguagesAndMatchingAbi() {
-        assertEquals(listOf("base.apk", "feature.apk", "split_config.arm64_v8a.apk", "split_config.fr.apk"),
-            flat("base.apk", "feature.apk", "split_config.arm64_v8a.apk", "split_config.x86.apk", "split_config.fr.apk"))
+    @Test fun manifestsIdentifySplitsRegardlessOfFilename() {
+        assertEquals(SplitInfo(null, null, false), info("base"))
+        assertEquals(SplitInfo("config.arm64_v8a", null, false), info("arm64"))
+        assertEquals(SplitInfo("assets", null, true), info("assets"))
+        assertEquals(SplitInfo("assets.config.hdpi", "assets", false), info("assetshdpi"))
+        assertEquals("hdpi", info("assetshdpi").config)
+        assertNull(info("assets").config)
+        assertThrows(IllegalArgumentException::class.java) { SplitManifest.parse(ByteArray(64)) }
     }
 
-    @Test fun densityIsChosenPerModuleAndCaseInsensitively() {
-        assertEquals(listOf("BASE.APK", "CONFIG.XXHDPI.APK", "feature-config.hdpi.apk"),
-            flat("BASE.APK", "CONFIG.HDPI.APK", "CONFIG.XXHDPI.APK", "feature-config.hdpi.apk"))
+    @Test fun selectionKeepsBaseFeaturesLanguagesAndTheMatchingAbi() {
+        assertEquals(listOf("base", "arm64", "fr", "assets"), select("base", "arm64", "x86", "fr", "assets"))
+        assertEquals(listOf("base", "x86"), select("base", "arm64", "x86", abis = listOf("x86")))
     }
 
-    @Test fun universalAndIncompatibleAbiAreHandledExplicitly() {
-        assertEquals(listOf("universal.apk"), flat("base.apk", "universal.apk", "config.x86.apk"))
-        assertThrows(InstallerException::class.java) { flat("base.apk", "config.x86.apk") }
+    @Test fun densityIsChosenPerModule() {
+        assertEquals(listOf("base", "xxhdpi", "assets", "assetsxxhdpi"), select("base", "hdpi", "xxhdpi", "assets", "assetshdpi", "assetsxxhdpi"))
+        assertEquals(listOf("base", "hdpi", "assets", "assetshdpi"), select("base", "hdpi", "xxhdpi", "assets", "assetshdpi", "assetsxxhdpi", density = 200))
+    }
+
+    @Test fun configSplitsOfDroppedFeaturesAndBaseProblemsFailClosed() {
+        assertEquals(listOf("base", "hdpi"), select("base", "hdpi", "assetshdpi"))
+        assertThrows(InstallerException::class.java) { select("base", "x86") }
+        assertThrows(InstallerException::class.java) { select("arm64", "fr") }
+        assertThrows(InstallerException::class.java) { select("base", "base") }
     }
 
     @Test fun densityMatchingPrefersDownscalingAtTheBoundary() {
