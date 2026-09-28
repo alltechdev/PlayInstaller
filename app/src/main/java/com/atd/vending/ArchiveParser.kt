@@ -19,11 +19,15 @@ import java.util.concurrent.CancellationException
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import kotlin.concurrent.thread
 
-class ApkParser(private val context: Context, private val progress: (copied: Long, total: Long?) -> Unit = { _, _ -> }) {
+class ApkParser(private val context: Context, private val stallTimeoutMs: Long = 30_000,
+    private val progress: (copied: Long, total: Long?) -> Unit = { _, _ -> }) {
     private var copiedBytes = 0L
     @Volatile private var input: InputStream? = null
     @Volatile private var aborted = false
+    @Volatile private var stalled = false
+    @Volatile private var lastRead = 0L
 
     fun abort() {
         aborted = true
@@ -41,8 +45,23 @@ class ApkParser(private val context: Context, private val progress: (copied: Lon
                 }
             }.getOrNull() ?: Pair(null, null)
             val source = File(directory, "source.apk")
-            context.contentResolver.openInputStream(uri)?.also { input = it }?.use { copy(it, source, total = total) }
+            val stream = context.contentResolver.openInputStream(uri)
                 ?: throw InstallerException(ErrorKind.ApkUnreadable, "Cannot open the selected file.")
+            input = stream
+            lastRead = System.nanoTime()
+            val watchdog = thread(name = "read-watchdog", isDaemon = true) {
+                try {
+                    while (true) {
+                        Thread.sleep(500)
+                        if (System.nanoTime() - lastRead > stallTimeoutMs * 1_000_000) {
+                            stalled = true
+                            runCatching { stream.close() }
+                            return@thread
+                        }
+                    }
+                } catch (_: InterruptedException) {}
+            }
+            try { stream.use { copy(it, source, total = total) } } finally { watchdog.interrupt(); input = null }
             if (source.length() == 0L) fail("The selected file is empty.")
             ZipFile(source).use { zip ->
                 if (zip.getEntry("AndroidManifest.xml") != null) {
@@ -92,6 +111,7 @@ class ApkParser(private val context: Context, private val progress: (copied: Lon
             }
         } catch (e: Exception) {
             directory.deleteRecursively()
+            if (stalled) throw InstallerException(ErrorKind.ApkUnreadable, "The file source stopped responding.")
             if (aborted || e is CancellationException) throw CancellationException()
             if (e is InstallerException) throw e
             throw InstallerException(ErrorKind.ApkParseFailed,
@@ -179,6 +199,7 @@ class ApkParser(private val context: Context, private val progress: (copied: Lon
                 if (aborted) throw CancellationException()
                 val count = input.read(buffer)
                 if (count < 0) break
+                lastRead = System.nanoTime()
                 copiedBytes += count
                 written += count
                 if (crc == null && written - reported >= 4L * 1024 * 1024) { reported = written; progress(written, total) }

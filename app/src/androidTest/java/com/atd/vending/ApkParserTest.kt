@@ -161,6 +161,19 @@ class ApkParserTest {
         try { parser.read(Uri.fromFile(big)); fail("Abort was ignored") } catch (_: CancellationException) {}
     }
 
+    @Test fun stalledSourcesTimeOutWithoutLeavingACopy() {
+        val provider = Uri.parse("content://com.atd.vending.test.files")
+        app.contentResolver.call(provider, "reset", null, null)
+        try {
+            val started = System.nanoTime()
+            val error = try { ApkParser(app, stallTimeoutMs = 2_000).read(Uri.withAppendedPath(provider, "slow")); null }
+                catch (e: InstallerException) { e }
+            assertEquals(ErrorKind.ApkUnreadable, error!!.kind)
+            assertEquals("The file source stopped responding.", error.message)
+            assertTrue((System.nanoTime() - started) / 1_000_000 < 10_000)
+        } finally { app.contentResolver.call(provider, "release", null, null) }
+    }
+
     private fun zipBytes(vararg entries: Pair<String, ByteArray>) = zip("inner.zip", *entries).readBytes()
     private fun ByteArray.indexOf(needle: ByteArray): Int =
         (0..size - needle.size).firstOrNull { start -> needle.indices.all { this[start + it] == needle[it] } } ?: -1
