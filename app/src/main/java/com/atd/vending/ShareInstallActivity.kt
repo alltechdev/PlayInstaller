@@ -56,7 +56,7 @@ class ShareInstallActivity : ComponentActivity() {
             issue = "Another operation is already in progress."
         } else {
             try {
-                app.selectApk(intent.sharedFileUri(), selectionId)
+                app.selectApks(intent.sharedFileUris(), selectionId)
             } catch (e: Exception) {
                 issue = "Cannot open file: ${e.message}"
             }
@@ -74,7 +74,8 @@ class ShareInstallActivity : ComponentActivity() {
                 onInstall = { if (ownsSelection) app.install() },
                 onOpen = ::openInstalledApp, onCopy = { copyReport(state) }, onDismiss = ::dismiss,
                 onToggleDowngrade = { app.setAllowDowngrade(!state.allowDowngrade) },
-                onUninstall = { if (ownsSelection) app.uninstallInstalled() })
+                onUninstall = { if (ownsSelection) app.uninstallInstalled() },
+                onSkip = { if (ownsSelection) app.skip() })
         }
     }
 
@@ -98,7 +99,8 @@ class ShareInstallActivity : ComponentActivity() {
 
 @Composable
 private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstall: () -> Unit,
-    onOpen: () -> Unit, onCopy: () -> Unit, onDismiss: () -> Unit, onToggleDowngrade: () -> Unit, onUninstall: () -> Unit) {
+    onOpen: () -> Unit, onCopy: () -> Unit, onDismiss: () -> Unit, onToggleDowngrade: () -> Unit, onUninstall: () -> Unit,
+    onSkip: () -> Unit) {
     val colors = installerColors()
     val selected = state.selected
     val ready = issue == null && !state.busy && state.canInstall && selected != null
@@ -107,10 +109,12 @@ private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstal
     val result = state.result.isNotEmpty() && !state.busy
     val installed = result && state.outcome?.installed == true
     val copyable = result && issue == null && (state.isError || state.outcome?.warning == true)
+    val position = if (state.batch && state.queueIndex in state.queue.indices) " (${state.queueIndex + 1} of ${state.queue.size})" else ""
     val title = when {
         issue != null -> "Can't open file"
-        state.busy -> when { state.reading -> "Reading file"; state.stage == "Uninstalling…" -> "Uninstalling"; else -> "Installing" }
-        ready -> "Install this app?"
+        state.busy -> when { state.reading -> "Reading file$position"; state.stage == "Uninstalling…" -> "Uninstalling"; else -> "Installing$position" }
+        ready -> "Install this app?$position"
+        result && state.batch && state.selected == null -> "Batch finished"
         failed -> if (state.selected == null) "Can't open file" else "Installation failed"
         result -> state.outcome?.title ?: "Installation result"
         else -> "Open with PlayInstaller"
@@ -138,6 +142,7 @@ private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstal
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (ready) {
                 InstallerButton("Cancel", enabled = true, colors.background, colors.foreground, colors.outline, onDismiss, compact = true)
+                if (state.batch) InstallerButton("Skip", enabled = true, colors.background, colors.foreground, colors.outline, onSkip, compact = true)
                 InstallerButton("Install", enabled = installable, colors.action, colors.actionText, colors.action, onInstall, compact = true)
             } else if (state.reading && issue == null) {
                 InstallerButton("Cancel", enabled = true, colors.background, colors.foreground, colors.outline, onDismiss, compact = true)

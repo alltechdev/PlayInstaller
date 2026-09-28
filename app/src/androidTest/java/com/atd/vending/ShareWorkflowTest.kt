@@ -82,15 +82,45 @@ class ShareWorkflowTest {
         await("Selection did not clear") { !app.ui.value.busy }
     }
 
+    private fun shareMany(vararg paths: String) = Intent(app, ShareInstallActivity::class.java).apply {
+        action = Intent.ACTION_SEND_MULTIPLE
+        type = "application/vnd.android.package-archive"
+        val uris = paths.map { Uri.withAppendedPath(provider, it) }
+        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+        clipData = ClipData.newRawUri("APK", uris.first()).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+
+    @Test fun batchSharesAdvanceThroughSkipsAndFailuresToASummary() {
+        ActivityScenario.launch<ShareInstallActivity>(shareMany("apk", "missing", "apk")).use {
+            await("First item not ready") { !app.ui.value.busy && app.ui.value.canInstall && button("Skip") != null }
+            assertTrue(hasText("(1 of 3)"))
+            assertEquals(listOf(QueueStatus.Ready, QueueStatus.Pending, QueueStatus.Pending), app.ui.value.queue.map { it.status })
+            assertEquals("PlayInstaller", app.ui.value.queue[0].name)
+            assertTrue(button("Skip")!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            await("Third item not ready") { !app.ui.value.busy && app.ui.value.queueIndex == 2 && app.ui.value.canInstall }
+            assertTrue(hasText("(3 of 3)"))
+            assertEquals(listOf(QueueStatus.Skipped, QueueStatus.Failed, QueueStatus.Ready), app.ui.value.queue.map { it.status })
+            assertTrue(app.ui.value.queue[1].detail.contains("Fixture unavailable"))
+            await("Skip missing") { button("Skip") != null }
+            assertTrue(button("Skip")!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            await("Summary missing") { !app.ui.value.busy && app.ui.value.selected == null && app.ui.value.result.isNotEmpty() }
+            assertTrue(app.ui.value.result.startsWith("0 installed, 1 failed, 2 skipped"))
+            assertTrue(app.ui.value.isError)
+            await("Batch title missing") { hasText("Batch finished") && button("Close") != null }
+            assertEquals(3, reads())
+        }
+    }
+
     @Suppress("DEPRECATION")
     @Test fun manifestAcceptsStreamOnlySharesAndContentViews() {
         val types = listOf("application/vnd.android.package-archive", "application/zip",
             "application/x-zip-compressed", "application/octet-stream", "application/vnd.apkm",
             "application/vnd.apks", "application/vnd.xapk")
         for (type in types) {
-            for (action in listOf(Intent.ACTION_SEND, Intent.ACTION_VIEW)) {
+            for (action in listOf(Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE, Intent.ACTION_VIEW)) {
                 val intent = Intent(action).setPackage(app.packageName).addCategory(Intent.CATEGORY_DEFAULT)
-                if (action == Intent.ACTION_SEND) {
+                if (action != Intent.ACTION_VIEW) {
                     intent.type = type
                     intent.putExtra(Intent.EXTRA_STREAM, Uri.withAppendedPath(provider, "apk"))
                 } else intent.setDataAndType(Uri.withAppendedPath(provider, "apk"), type)

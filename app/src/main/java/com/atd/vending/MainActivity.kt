@@ -57,8 +57,8 @@ class MainActivity : ComponentActivity() {
         val app = application as InstallerApplication
         setContent {
             val state by app.ui.collectAsStateWithLifecycle()
-            val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-                if (uri != null) app.selectApk(uri)
+            val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+                app.selectApks(uris)
             }
             InstallerScreen(
                 state = state,
@@ -72,7 +72,8 @@ class MainActivity : ComponentActivity() {
                 onCopyResult = { copyReport(state) },
                 onCancelRead = { app.cancelRead() },
                 onToggleDowngrade = { app.setAllowDowngrade(!state.allowDowngrade) },
-                onUninstall = app::uninstallInstalled
+                onUninstall = app::uninstallInstalled,
+                onSkip = app::skip
             )
         }
     }
@@ -82,7 +83,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun InstallerScreen(state: InstallerUiState, onSelect: () -> Unit, onInstall: () -> Unit,
     onClear: () -> Unit, onCopyResult: () -> Unit, onOpen: () -> Unit, onCancelRead: () -> Unit,
-    onToggleDowngrade: () -> Unit, onUninstall: () -> Unit) {
+    onToggleDowngrade: () -> Unit, onUninstall: () -> Unit, onSkip: () -> Unit) {
     val colors = installerColors()
     val shape = RoundedCornerShape(14.dp)
     val body = TextStyle(color = colors.foreground, fontSize = 15.sp, lineHeight = 22.sp)
@@ -123,7 +124,9 @@ private fun InstallerScreen(state: InstallerUiState, onSelect: () -> Unit, onIns
                 InstallerButton("Install", state.canInstall && !state.busy && selected.installed?.blocks(state.allowDowngrade) != true,
                     colors.action, colors.actionText, colors.action,
                     if (state.busy) ({}) else onInstall, shape = shape)
+                if (state.batch) InstallerButton("Skip", state.canInstall && !state.busy, colors.background, colors.foreground, colors.outline, onSkip, shape = shape)
             }
+            if (state.batch) QueueList(state, colors, body)
             if (state.busy) {
                 BasicText(state.stage, style = body.copy(color = colors.muted), modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                 if (state.reading) InstallerButton("Cancel", true, colors.background, colors.foreground, colors.outline, onCancelRead, compact = true)
@@ -139,6 +142,21 @@ private fun InstallerScreen(state: InstallerUiState, onSelect: () -> Unit, onIns
                     InstallerButton(if (state.isError) "Copy error" else "Copy details", !state.busy,
                         colors.background, colors.foreground, colors.outline, onCopyResult, shape = shape)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueList(state: InstallerUiState, colors: InstallerColors, body: TextStyle) {
+    val secondary = body.copy(color = colors.muted, fontSize = 13.sp, lineHeight = 19.sp)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        state.queue.forEachIndexed { index, item ->
+            val current = index == state.queueIndex && state.selected != null
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BasicText(item.name, style = if (current) secondary.copy(color = colors.foreground) else secondary, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                BasicText(item.status.label, style = secondary.copy(color = if (item.status == QueueStatus.Failed) colors.error else colors.muted))
             }
         }
     }

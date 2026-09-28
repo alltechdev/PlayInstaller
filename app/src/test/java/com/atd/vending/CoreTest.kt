@@ -46,15 +46,25 @@ class CoreTest {
         assertNull(PmParser.field("initiatingPackageName=null", "initiatingPackageName"))
     }
 
-    @Test fun sharedFilesRequireOneContentUri() {
-        for (count in 0..1) requireSharedFile("content", "files.example", count)
+    @Test fun sharedFilesRequireContentUris() {
+        requireSharedFile("content", "files.example")
         listOf(null, "file", "https", "javascript").forEach { scheme ->
-            assertThrows(IllegalArgumentException::class.java) { requireSharedFile(scheme, "files.example", 1) }
+            assertThrows(IllegalArgumentException::class.java) { requireSharedFile(scheme, "files.example") }
         }
         listOf(null, "").forEach { authority ->
-            assertThrows(IllegalArgumentException::class.java) { requireSharedFile("content", authority, 1) }
+            assertThrows(IllegalArgumentException::class.java) { requireSharedFile("content", authority) }
         }
-        assertThrows(IllegalArgumentException::class.java) { requireSharedFile("content", "files.example", 2) }
+    }
+
+    @Test fun batchSummaryCountsEveryOutcomeAndListsEachFile() {
+        val queue = listOf(QueuedFile("content://a", "Maps", QueueStatus.Installed, "Installed successfully"),
+            QueuedFile("content://b", "File 2", QueueStatus.Failed, "ApkParseFailed: bad"),
+            QueuedFile("content://c", "Notes", QueueStatus.Skipped))
+        assertEquals("1 installed, 1 failed, 1 skipped\n\nMaps: Installed · Installed successfully\nFile 2: Failed · ApkParseFailed: bad\nNotes: Skipped", queue.summary())
+        assertTrue(InstallerUiState(queue = queue, queueIndex = 1).batch)
+        assertEquals("File 2", InstallerUiState(queue = queue, queueIndex = 1).current!!.name)
+        assertFalse(InstallerUiState(queue = queue.take(1)).batch)
+        assertNull(InstallerUiState(queue = queue).current)
     }
 
     @Test fun packageNamesCannotBecomeShellSyntax() {

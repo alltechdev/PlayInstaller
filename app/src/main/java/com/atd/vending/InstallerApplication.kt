@@ -33,7 +33,9 @@ data class InstallerUiState(
     val isError: Boolean = false,
     val outcome: InstallOutcome? = null,
     val log: String = "",
-    val allowDowngrade: Boolean = false
+    val allowDowngrade: Boolean = false,
+    val queue: List<QueuedFile> = emptyList(),
+    val queueIndex: Int = -1
 )
 
 private const val LOG_LIMIT = 256 * 1024
@@ -49,6 +51,7 @@ class InstallerApplication : Application() {
     val ui = mutableUi.asStateFlow()
     private var apk: Apk? = null
     @Volatile private var parser: ApkParser? = null
+    private var next: (() -> Unit)? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -62,10 +65,18 @@ class InstallerApplication : Application() {
         get() = packageName == if (Build.VERSION.SDK_INT >= 28) getProcessName()
             else runCatching { File("/proc/self/cmdline").readText().trimEnd('\u0000') }.getOrNull()
 
+    fun selectApks(uris: List<Uri>, selectionId: String = UUID.randomUUID().toString()) {
+        if (mutableUi.value.busy || uris.isEmpty()) return
+        if (uris.size == 1) return selectApk(uris.single(), selectionId)
+        mutableUi.update { it.copy(queue = uris.mapIndexed { index, uri -> QueuedFile(uri.toString(), "File ${index + 1}") }, queueIndex = 0) }
+        selectApk(uris.first(), selectionId)
+    }
+
     fun selectApk(uri: Uri, selectionId: String = UUID.randomUUID().toString()) {
         if (mutableUi.value.busy) return
-        mutableUi.update { it.copy(selectionId = selectionId, allowDowngrade = false) }
+        mutableUi.update { it.copy(selectionId = selectionId, allowDowngrade = false, queue = if (it.batch) it.queue else emptyList(), queueIndex = if (it.batch) it.queueIndex else -1) }
         operation(READING) {
+            mark(QueueStatus.Reading)
             val reader = ApkParser(this) { copied, total ->
                 val of = total?.let { " of ${Formatter.formatShortFileSize(this, it)}" }.orEmpty()
                 mutableUi.update { it.copy(stage = "$READING ${Formatter.formatShortFileSize(this, copied)}$of") }
@@ -74,13 +85,46 @@ class InstallerApplication : Application() {
             val parsed = try {
                 discardSelection()
                 withContext(Dispatchers.IO) { reader.read(uri) }
+            } catch (e: CancellationException) {
+                mutableUi.update { it.copy(queue = emptyList(), queueIndex = -1) }
+                throw e
+            } catch (e: Exception) {
+                if (!mutableUi.value.batch) throw e
+                mark(QueueStatus.Failed, "${(e as? InstallerException)?.kind ?: "Error"}: ${e.message}")
+                next = ::advance
+                return@operation
             } finally { parser = null }
             apk = parsed
             val size = Formatter.formatShortFileSize(this, parsed.size + parsed.expansions.sumOf { it.file.length() })
             val count = if (parsed.parts.size > 1) " · ${parsed.parts.size} APKs" else ""
             val data = if (parsed.expansions.isNotEmpty()) " · includes OBB" else ""
+            mark(QueueStatus.Ready, name = parsed.label)
             mutableUi.update { it.copy(selected = SelectedApp(parsed.label, parsed.packageName, parsed.version,
                 parsed.displayName, "$size$count$data", parsed.icon, installedNote(parsed.packageName, parsed.versionCode, parsed.signers)), canInstall = true) }
+        }
+    }
+
+    fun skip() {
+        if (mutableUi.value.busy || !mutableUi.value.batch) return
+        mark(QueueStatus.Skipped)
+        advance()
+    }
+
+    private fun mark(status: QueueStatus, detail: String = "", name: String? = null) = mutableUi.update { state ->
+        val item = state.current ?: return@update state
+        state.copy(queue = state.queue.toMutableList().apply { set(state.queueIndex, item.copy(status = status, detail = detail, name = name ?: item.name)) })
+    }
+
+    private fun advance() {
+        val state = mutableUi.value
+        val index = state.queueIndex + 1
+        if (index < state.queue.size) {
+            mutableUi.update { it.copy(queueIndex = index) }
+            selectApk(Uri.parse(state.queue[index].uri), state.selectionId ?: UUID.randomUUID().toString())
+        } else operation("Finishing…") {
+            discardSelection()
+            mutableUi.update { it.copy(result = it.queue.summary(), outcome = null,
+                isError = it.queue.none { item -> item.status == QueueStatus.Installed } && it.queue.any { item -> item.status == QueueStatus.Failed }) }
         }
     }
 
@@ -101,7 +145,7 @@ class InstallerApplication : Application() {
     }
 
     fun clearSelection() = operation("Clearing…") {
-        mutableUi.update { it.copy(selectionId = null) }
+        mutableUi.update { it.copy(selectionId = null, queue = emptyList(), queueIndex = -1) }
         discardSelection()
     }
 
@@ -118,6 +162,7 @@ class InstallerApplication : Application() {
     fun install() {
         val selected = apk ?: return
         operation("Installing…") {
+            mark(QueueStatus.Installing)
             InstallService.start(this, selected.label)
             try {
                 val log = StringBuilder()
@@ -131,6 +176,10 @@ class InstallerApplication : Application() {
                 }
                 mutableUi.update { it.copy(result = installed.summary(), outcome = installed.outcome,
                     isError = installed.outcome == InstallOutcome.Failure, log = log.toString().trimEnd()) }
+                if (mutableUi.value.batch) {
+                    mark(if (installed.outcome.installed) QueueStatus.Installed else QueueStatus.Failed, installed.outcome.title)
+                    next = ::advance
+                }
             } finally {
                 InstallService.stop(this)
                 apk = null
@@ -158,6 +207,7 @@ class InstallerApplication : Application() {
                 mutableUi.update { it.copy(result = "${(e as? InstallerException)?.kind ?: "Error"}: ${e.message}", isError = true) }
             } finally {
                 mutableUi.update { it.copy(busy = false, stage = "") }
+                next?.let { next = null; it() }
             }
         }
     }
