@@ -13,13 +13,13 @@ class CoreTest {
         val downgrade = installedNote(14, "1.4", 13, true)
         assertTrue(downgrade.downgrade && !downgrade.signatureMismatch)
         assertTrue(downgrade.text.startsWith("Installed version 1.4 is newer."))
-        assertTrue(downgrade.blocks)
-        assertFalse(installedNote(12, "1.2", 13, true).blocks)
+        assertEquals("Uninstall and install", downgrade.action)
+        assertEquals("Install", installedNote(12, "1.2", 13, true).action)
         assertTrue(installedNote(14, null, 13, true).text.startsWith("Installed version 14 is newer."))
         val mismatch = installedNote(12, "1.2", 13, false)
         assertTrue(mismatch.signatureMismatch && !mismatch.downgrade)
         assertTrue(mismatch.text.contains("different key"))
-        assertTrue(mismatch.blocks)
+        assertEquals("Uninstall", mismatch.action)
     }
 
     @Test fun sessionIdsRequireOneUnambiguousPositiveInt() {

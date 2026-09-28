@@ -19,8 +19,9 @@ class InstallController internal constructor(private val openRoot: () -> Command
     constructor(context: Context, log: (String) -> Unit, progress: (String) -> Unit) :
         this({ RootShell().open() }, { InstallerResolver(context, it) }, log, progress)
 
-    fun install(apk: Apk, installer: String): InstallResult {
+    fun install(apk: Apk, installer: String, replaceInstalled: Boolean = false): InstallResult {
         var session: Long? = null
+        var uninstalled = false
         var sessionOwnerUid: Int? = null
         var committed = false
         var sessionAbandoned = false
@@ -49,6 +50,11 @@ class InstallController internal constructor(private val openRoot: () -> Command
             log("Session creator and committer: $installer (resolved UID $uid). Staging and session writing: root.")
             pm.checkCompatibility()
             sweepStale(pm)
+            if (replaceInstalled) {
+                progress("Uninstalling the installed version…")
+                checked(pm.uninstall(apk.packageName), ErrorKind.CommandFailed)
+                uninstalled = true
+            }
             val paths = apk.parts.mapIndexed { index, part ->
                 progress("Staging APK ${index + 1}/${apk.parts.size}…")
                 val path = "$STAGING_DIR/root-installer-$operationId-$index.apk"
@@ -92,6 +98,7 @@ class InstallController internal constructor(private val openRoot: () -> Command
         } catch (e: Exception) {
             error = "${(e as? InstallerException)?.kind ?: ErrorKind.CommandFailed}: ${e.message}\n${friendlyError(e.message.orEmpty())}"
             if (committed) error = "The APKs were installed, but expansion data could not be fully copied. The app remains installed; retry the archive.\n$error"
+            else if (uninstalled) error = "The installed version was uninstalled, but this version failed to install. Its data is gone; select the file again to retry.\n$error"
             log(error)
         } finally {
             progress("Cleaning up…")

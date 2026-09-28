@@ -73,7 +73,6 @@ class ShareInstallActivity : ComponentActivity() {
             ShareInstallDialog(if (active) state else InstallerUiState(), problem,
                 onInstall = { if (ownsSelection) app.install() },
                 onOpen = ::openInstalledApp, onCopy = { copyReport(state) }, onDismiss = ::dismiss,
-                onUninstall = { if (ownsSelection) app.uninstallInstalled() },
                 onSkip = { if (ownsSelection) app.skip() })
         }
     }
@@ -98,12 +97,11 @@ class ShareInstallActivity : ComponentActivity() {
 
 @Composable
 private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstall: () -> Unit,
-    onOpen: () -> Unit, onCopy: () -> Unit, onDismiss: () -> Unit, onUninstall: () -> Unit,
+    onOpen: () -> Unit, onCopy: () -> Unit, onDismiss: () -> Unit,
     onSkip: () -> Unit) {
     val colors = installerColors()
     val selected = state.selected
     val ready = issue == null && !state.busy && state.canInstall && selected != null
-    val installable = ready && selected?.installed?.blocks != true
     val failed = issue != null || state.isError
     val result = state.result.isNotEmpty() && !state.busy
     val installed = result && state.outcome?.installed == true
@@ -129,10 +127,7 @@ private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstal
         when {
             issue != null -> BasicText(issue, style = TextStyle(color = colors.error, fontSize = 14.sp, lineHeight = 20.sp))
             state.busy -> BasicText(state.stage, style = TextStyle(color = colors.muted, fontSize = 14.sp))
-            ready -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ShareAppCard(selected, colors)
-                if (selected.installed != null) UninstallButton(true, colors, onUninstall)
-            }
+            ready -> ShareAppCard(selected, colors)
             state.result.isNotEmpty() -> InstallResultText(state, colors,
                 TextStyle(fontSize = 14.sp, lineHeight = 20.sp))
         }
@@ -142,7 +137,7 @@ private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstal
             if (ready) {
                 InstallerButton("Cancel", enabled = true, colors.background, colors.foreground, colors.outline, onDismiss, compact = true)
                 if (state.batch) InstallerButton("Skip", enabled = true, colors.background, colors.foreground, colors.outline, onSkip, compact = true)
-                InstallerButton("Install", enabled = installable, colors.action, colors.actionText, colors.action, onInstall, compact = true)
+                InstallerButton(selected.installed?.action ?: "Install", enabled = true, colors.action, colors.actionText, colors.action, onInstall, compact = true)
             } else if (state.reading && issue == null) {
                 InstallerButton("Cancel", enabled = true, colors.background, colors.foreground, colors.outline, onDismiss, compact = true)
             } else if (!state.busy && (result || issue != null)) {

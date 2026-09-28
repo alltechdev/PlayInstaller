@@ -71,7 +71,6 @@ class MainActivity : ComponentActivity() {
                 onClear = app::clearSelection,
                 onCopyResult = { copyReport(state) },
                 onCancelRead = { app.cancelRead() },
-                onUninstall = app::uninstallInstalled,
                 onSkip = app::skip
             )
         }
@@ -82,7 +81,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun InstallerScreen(state: InstallerUiState, onSelect: () -> Unit, onInstall: () -> Unit,
     onClear: () -> Unit, onCopyResult: () -> Unit, onOpen: () -> Unit, onCancelRead: () -> Unit,
-    onUninstall: () -> Unit, onSkip: () -> Unit) {
+    onSkip: () -> Unit) {
     val colors = installerColors()
     val shape = RoundedCornerShape(14.dp)
     val body = TextStyle(color = colors.foreground, fontSize = 15.sp, lineHeight = 22.sp)
@@ -119,8 +118,7 @@ private fun InstallerScreen(state: InstallerUiState, onSelect: () -> Unit, onIns
                 AppCard(selected, colors, body, !state.busy, onClear, shape)
             }
             if (selected != null) {
-                if (selected.installed != null) UninstallButton(!state.busy, colors, onUninstall)
-                InstallerButton("Install", state.canInstall && !state.busy && selected.installed?.blocks != true,
+                InstallerButton(selected.installed?.action ?: "Install", state.canInstall && !state.busy,
                     colors.action, colors.actionText, colors.action,
                     if (state.busy) ({}) else onInstall, shape = shape)
                 if (state.batch) InstallerButton("Skip", state.canInstall && !state.busy, colors.background, colors.foreground, colors.outline, onSkip, shape = shape)

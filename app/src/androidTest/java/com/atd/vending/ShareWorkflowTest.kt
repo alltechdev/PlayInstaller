@@ -215,7 +215,8 @@ class ShareWorkflowTest {
             val installed = app.packageManager.getPackageInfo(app.packageName, SIGNING_FLAG)
             assertEquals(installedNote(installed.code, installed.versionName, installed.code, true), app.ui.value.selected!!.installed)
             assertTrue(hasText("already installed"))
-            assertNotNull(button("Uninstall"))
+            assertNotNull(button("Install"))
+            assertNull(button("Uninstall"))
             assertTrue(button("Cancel")!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
             await("Cancel did not clear the selection") { !app.ui.value.busy && app.ui.value.selected == null }
             assertNull(app.ui.value.selectionId)

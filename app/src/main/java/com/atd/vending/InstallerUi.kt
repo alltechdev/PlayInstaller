@@ -85,11 +85,6 @@ internal fun InstalledNoteText(note: InstalledNote, colors: InstallerColors, sty
 }
 
 @Composable
-internal fun UninstallButton(enabled: Boolean, colors: InstallerColors, onUninstall: () -> Unit) {
-    InstallerButton("Uninstall", enabled, colors.background, colors.error, colors.outline, onUninstall, compact = true)
-}
-
-@Composable
 internal fun InstallResultText(state: InstallerUiState, colors: InstallerColors, style: TextStyle,
     modifier: Modifier = Modifier) {
     SelectionContainer {

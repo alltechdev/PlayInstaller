@@ -134,14 +134,6 @@ class InstallerApplication : Application() {
         }
     }
 
-    fun uninstallInstalled() {
-        val selected = apk ?: return
-        operation("Uninstalling…") {
-            withContext(Dispatchers.IO) { InstallController(this@InstallerApplication, {}, {}).uninstall(selected.packageName) }
-            mutableUi.update { state -> state.copy(selected = state.selected?.copy(installed = installedNote(selected.packageName, selected.versionCode, selected.signers))) }
-        }
-    }
-
     fun cancelRead(): Boolean {
         val active = parser ?: return false
         active.abort()
@@ -165,6 +157,11 @@ class InstallerApplication : Application() {
 
     fun install() {
         val selected = apk ?: return
+        val note = mutableUi.value.selected?.installed
+        if (note?.signatureMismatch == true) return operation("Uninstalling…") {
+            withContext(Dispatchers.IO) { InstallController(this@InstallerApplication, {}, {}).uninstall(selected.packageName) }
+            mutableUi.update { state -> state.copy(selected = state.selected?.copy(installed = installedNote(selected.packageName, selected.versionCode, selected.signers))) }
+        }
         operation("Installing…") {
             mark(QueueStatus.Installing)
             InstallService.start(this, selected.label)
@@ -176,7 +173,7 @@ class InstallerApplication : Application() {
                         else if (!log.endsWith(LOG_TRUNCATED)) log.append(LOG_TRUNCATED)
                     }, { stage ->
                         mutableUi.update { it.copy(stage = stage) }
-                    }).install(selected, PLAY_STORE_PACKAGE)
+                    }).install(selected, PLAY_STORE_PACKAGE, note?.downgrade == true)
                 }
                 mutableUi.update { it.copy(result = installed.summary(), outcome = installed.outcome,
                     isError = installed.outcome == InstallOutcome.Failure, log = log.toString().trimEnd()) }
