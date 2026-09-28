@@ -59,6 +59,12 @@ class InstallerApplication : Application() {
         if (!isMainProcess) return
         val stale = cacheDir.listFiles { file -> file.isDirectory && file.name.startsWith("selected-") }.orEmpty()
         if (stale.isNotEmpty()) scope.launch { withContext(Dispatchers.IO) { stale.forEach { it.deleteRecursively() } } }
+        restoreLastResult()
+    }
+
+    fun restoreLastResult() = scope.launch {
+        val saved = withContext(Dispatchers.IO) { LastResult.load(filesDir) } ?: return@launch
+        mutableUi.update { if (it.busy || it.selected != null || it.result.isNotEmpty()) it else saved }
     }
 
     private val isMainProcess: Boolean
@@ -125,6 +131,7 @@ class InstallerApplication : Application() {
             discardSelection()
             mutableUi.update { it.copy(result = it.queue.summary(), outcome = null,
                 isError = it.queue.none { item -> item.status == QueueStatus.Installed } && it.queue.any { item -> item.status == QueueStatus.Failed }) }
+            withContext(Dispatchers.IO) { LastResult.save(filesDir, mutableUi.value) }
         }
     }
 
@@ -176,6 +183,7 @@ class InstallerApplication : Application() {
                 }
                 mutableUi.update { it.copy(result = installed.summary(), outcome = installed.outcome,
                     isError = installed.outcome == InstallOutcome.Failure, log = log.toString().trimEnd()) }
+                withContext(Dispatchers.IO) { LastResult.save(filesDir, mutableUi.value) }
                 if (mutableUi.value.batch) {
                     mark(if (installed.outcome.installed) QueueStatus.Installed else QueueStatus.Failed, installed.outcome.title)
                     next = ::advance
@@ -201,6 +209,7 @@ class InstallerApplication : Application() {
         mutableUi.update { it.copy(busy = true, stage = stage, result = "", isError = false, outcome = null, log = "") }
         scope.launch {
             try {
+                withContext(Dispatchers.IO) { LastResult.clear(filesDir) }
                 block()
             } catch (_: CancellationException) {
             } catch (e: Exception) {

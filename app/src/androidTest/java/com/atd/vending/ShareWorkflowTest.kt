@@ -244,6 +244,26 @@ class ShareWorkflowTest {
         return manager.getRunningServices(Int.MAX_VALUE).any { it.service.className == InstallService::class.java.name && it.foreground }
     }
 
+    @Test fun lastResultIsRestoredOnlyIntoAnIdleApp() {
+        val saved = InstallerUiState(result = "Installation failed\n\napp.test\n\nboom", isError = true, log = "$ 'pm'\nFailure\n[exit 1]")
+        assertTrue(LastResult.save(app.filesDir, saved).isSuccess)
+        try {
+            showState(InstallerUiState())
+            ActivityScenario.launch(MainActivity::class.java).use {
+                onMain { app.restoreLastResult() }
+                await("Saved result missing") { app.ui.value == saved && hasText("boom") && button("Copy error") != null }
+                assertNull(button("Open app"))
+                showState(InstallerUiState(result = "newer", isError = true))
+                onMain { app.restoreLastResult() }
+                instrumentation.waitForIdleSync()
+                assertEquals("newer", app.ui.value.result)
+                onMain { app.clearSelection() }
+                await("Clear did not finish") { !app.ui.value.busy }
+                assertFalse(LastResult.file(app.filesDir).exists())
+            }
+        } finally { LastResult.clear(app.filesDir) }
+    }
+
     @Test fun installsRunInsideAForegroundService() {
         assertFalse(serviceRunning())
         InstallService.start(app, "Test")

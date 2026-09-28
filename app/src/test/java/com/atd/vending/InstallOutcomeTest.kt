@@ -11,6 +11,17 @@ class InstallOutcomeTest {
         warnings: List<String> = emptyList()) = InstallResult(true, "app.test", 42,
         PackageMetadata(installer, initiating), null, warnings)
 
+    @Test fun lastResultRoundTripsAndRejectsPartialFiles() {
+        val state = InstallerUiState(result = "Installed with warnings\n\napp.test", outcome = InstallOutcome.WithWarnings, log = "$ 'pm'\nSuccess\n[exit 0]")
+        assertEquals(state, LastResult.decode(LastResult.encode(state)))
+        val failed = InstallerUiState(result = "Installation failed", isError = true)
+        assertEquals(failed, LastResult.decode(LastResult.encode(failed)))
+        assertNull(LastResult.decode(""))
+        assertNull(LastResult.decode(LastResult.encode(InstallerUiState())))
+        assertNull(LastResult.decode("Bogus\n\u0000\nfalse\n\u0000\nresult\n\u0000\n"))
+        assertNull(LastResult.decode(LastResult.encode(state).substringBeforeLast("\n\u0000\n")))
+    }
+
     @Test fun reportAppendsTheCommandLogOnlyWhenPresent() {
         val failed = InstallerUiState(result = "Installation failed", isError = true)
         assertEquals("Installation failed", failed.report())
