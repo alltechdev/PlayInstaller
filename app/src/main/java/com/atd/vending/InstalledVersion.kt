@@ -34,7 +34,6 @@ fun installedNote(installedCode: Long, installedName: String?, code: Long, sameS
     }
 }
 
-/** Null when the package is absent or invisible; the manifest queries only launchable apps. */
 fun Context.installedNote(packageName: String, code: Long, signers: Set<String>): InstalledNote? =
     runCatching { packageManager.getPackageInfo(packageName, SIGNING_FLAG) }.getOrNull()?.let {
         val installed = it.signers

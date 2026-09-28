@@ -264,6 +264,13 @@ class ShareWorkflowTest {
         } finally { LastResult.clear(app.filesDir) }
     }
 
+    @Test fun installedNotesResolveNonLaunchablePackages() {
+        val shell = app.packageManager.getPackageInfo("com.android.shell", SIGNING_FLAG)
+        assertNotNull(app.installedNote("com.android.shell", shell.code + 1, shell.signers))
+        assertTrue(app.installedNote("com.android.shell", shell.code, setOf("0000"))!!.signatureMismatch)
+        assertNull(app.installedNote("com.atd.absent", 1, emptySet()))
+    }
+
     @Test fun installsRunInsideAForegroundService() {
         assertFalse(serviceRunning())
         InstallService.start(app, "Test")
