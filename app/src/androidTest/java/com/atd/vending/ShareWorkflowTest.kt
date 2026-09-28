@@ -216,7 +216,6 @@ class ShareWorkflowTest {
             assertEquals(installedNote(installed.code, installed.versionName, installed.code, true), app.ui.value.selected!!.installed)
             assertTrue(hasText("already installed"))
             assertNotNull(button("Uninstall"))
-            assertNull(button("Uninstall and downgrade"))
             assertTrue(button("Cancel")!!.performAction(AccessibilityNodeInfo.ACTION_CLICK))
             await("Cancel did not clear the selection") { !app.ui.value.busy && app.ui.value.selected == null }
             assertNull(app.ui.value.selectionId)

@@ -73,7 +73,6 @@ class ShareInstallActivity : ComponentActivity() {
             ShareInstallDialog(if (active) state else InstallerUiState(), problem,
                 onInstall = { if (ownsSelection) app.install() },
                 onOpen = ::openInstalledApp, onCopy = { copyReport(state) }, onDismiss = ::dismiss,
-                onToggleReplace = { app.setReplaceInstalled(!state.replaceInstalled) },
                 onUninstall = { if (ownsSelection) app.uninstallInstalled() },
                 onSkip = { if (ownsSelection) app.skip() })
         }
@@ -99,12 +98,12 @@ class ShareInstallActivity : ComponentActivity() {
 
 @Composable
 private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstall: () -> Unit,
-    onOpen: () -> Unit, onCopy: () -> Unit, onDismiss: () -> Unit, onToggleReplace: () -> Unit, onUninstall: () -> Unit,
+    onOpen: () -> Unit, onCopy: () -> Unit, onDismiss: () -> Unit, onUninstall: () -> Unit,
     onSkip: () -> Unit) {
     val colors = installerColors()
     val selected = state.selected
     val ready = issue == null && !state.busy && state.canInstall && selected != null
-    val installable = ready && selected?.installed?.blocks(state.replaceInstalled) != true
+    val installable = ready && selected?.installed?.blocks != true
     val failed = issue != null || state.isError
     val result = state.result.isNotEmpty() && !state.busy
     val installed = result && state.outcome?.installed == true
@@ -132,7 +131,7 @@ private fun ShareInstallDialog(state: InstallerUiState, issue: String?, onInstal
             state.busy -> BasicText(state.stage, style = TextStyle(color = colors.muted, fontSize = 14.sp))
             ready -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ShareAppCard(selected, colors)
-                selected.installed?.let { InstalledActions(it, state.replaceInstalled, true, colors, onToggleReplace, onUninstall) }
+                if (selected.installed != null) UninstallButton(true, colors, onUninstall)
             }
             state.result.isNotEmpty() -> InstallResultText(state, colors,
                 TextStyle(fontSize = 14.sp, lineHeight = 20.sp))

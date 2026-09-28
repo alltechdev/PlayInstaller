@@ -50,7 +50,7 @@ class InstallControllerTest {
             if (rootDenied) throw InstallerException(ErrorKind.RootUnavailable, "denied")
             FakeShell().also { shells.add(it) }
         }, { this }, {}, {})
-        fun run(replaceInstalled: Boolean = false): InstallResult = controller().install(apk, identity.name, replaceInstalled)
+        fun run(): InstallResult = controller().install(apk, identity.name)
 
         fun commands(op: String) = calls.filter { operation(it) == op }
         fun assertClean() {
@@ -93,29 +93,12 @@ class InstallControllerTest {
         }
     }
 
-    @Test fun replacingUninstallsFirstAndNeverUsesTheDowngradeFlag() {
-        for (replace in listOf(false, true)) {
-            val f = Fixture()
-            assertTrue(f.run(replace).success)
-            assertFalse("'-d'" in f.commands("install-create").single().last())
-            assertEquals(replace, f.commands("uninstall").isNotEmpty())
-            if (replace) {
-                assertEquals(listOf("pm", "uninstall", "--user", "0", "app.test"), f.commands("uninstall").single())
-                assertTrue(f.calls.indexOf(f.commands("uninstall").single()) < f.calls.indexOf(f.commands("cp").first()))
-            }
-            f.assertClean()
-        }
+    @Test fun installsNeverUninstallOrPassTheDowngradeFlag() {
         val f = Fixture()
-        f.reply = { op, _ -> if (op == "install-commit") failure() else null }
-        val result = f.run(true)
-        assertFalse(result.success)
-        assertTrue(result.error!!.startsWith("The installed version was uninstalled, but this version failed to install."))
+        assertTrue(f.run().success)
+        assertFalse("'-d'" in f.commands("install-create").single().last())
+        assertTrue(f.commands("uninstall").isEmpty())
         f.assertClean()
-        val refused = Fixture()
-        refused.reply = { op, _ -> if (op == "uninstall") failure() else null }
-        assertFalse(refused.run(true).success)
-        assertTrue(refused.commands("install-create").isEmpty())
-        refused.assertClean()
     }
 
     @Test fun uninstallRunsExactlyOneRootCommandAndClosesTheShell() {

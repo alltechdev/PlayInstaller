@@ -7,9 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -87,14 +85,8 @@ internal fun InstalledNoteText(note: InstalledNote, colors: InstallerColors, sty
 }
 
 @Composable
-internal fun InstalledActions(note: InstalledNote, replaceInstalled: Boolean, enabled: Boolean, colors: InstallerColors,
-    onToggleReplace: () -> Unit, onUninstall: () -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (note.downgrade) InstallerButton(if (replaceInstalled) "Will uninstall first" else "Uninstall and downgrade", enabled,
-            if (replaceInstalled) colors.action else colors.background, if (replaceInstalled) colors.actionText else colors.foreground,
-            if (replaceInstalled) colors.action else colors.outline, onToggleReplace, compact = true)
-        InstallerButton("Uninstall", enabled, colors.background, colors.error, colors.outline, onUninstall, compact = true)
-    }
+internal fun UninstallButton(enabled: Boolean, colors: InstallerColors, onUninstall: () -> Unit) {
+    InstallerButton("Uninstall", enabled, colors.background, colors.error, colors.outline, onUninstall, compact = true)
 }
 
 @Composable
